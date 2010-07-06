@@ -24,9 +24,9 @@ function custom_tabs_menu() {
 					$items['node/%/'.strtolower(ctools_cleanstring($anchor))] = array(
 					  'title' => $anchor,
 					  'page callback' => 'custom_tabs_callback',
-					  'page arguments' => array(urldecode($href),1),
+					  'page arguments' => array($href,1),
 					  'access callback' => '_custom_tabs_check_type',
-					  'access arguments' => array($type,1),
+					  'access arguments' => array($href,1,$type),
 					  'type' => MENU_LOCAL_TASK
 					);
 				}
@@ -41,29 +41,49 @@ function custom_tabs_menu() {
 function custom_tabs_callback($href=null,$nid=null) {
 	if (is_numeric($nid)) {
 		$node = node_load($nid);
-		if (module_exists('token')) {
-			$href = token_replace($href,'node',$node,'<','>');
-		}
 	}
+	$href_parsed = _custom_tabs_parse_url($href,$node);
+	drupal_goto($href_parsed['path'],$href_parsed['query'],$href_parsed['fragment']);
+}
+function _custom_tabs_parse_url($href=null,$node=null) {
+	if (!$href) return $href;
+	if (module_exists('token') and $node) {
+		$href = token_replace($href,'node',$node,'<','>');
+	}
+	
 	$href = explode('?',$href);
 	$path = $href[0];
 	$query = $href[1];
 	$fragment = explode('#',$query);
 	$fragment = $fragment[1];
-	drupal_goto($path,$query,$fragment);
+	
+	return array('path'=>$path,'query'=>$query,'fragment'=>$fragment);
 }
-function _custom_tabs_check_type($type=null,$nid=null){
+function _custom_tabs_check_type($href=null,$nid=null,$type=null){
 	if(is_numeric($nid) and $type) {
 		$node = node_load($nid);
+		$href_parsed = _custom_tabs_parse_url($href,$node);
+		$path = $href_parsed['path'];
+		$access = _custom_tabs_path_access_check($path);
+		if(!$access) { return false; }
+		
 		$enabled_types = variable_get('custom_tabs_types', array());
 		if (strtolower(trim($node->type)) === strtolower(trim($enabled_types[$type]))) {
 			return true;
 		}
-	
 	}
 	return false;
 }
-
+function _custom_tabs_path_access_check($path) {
+	if($path) {
+		$mitem = menu_get_item($path);
+		if ($mitem) {
+			$access = _menu_check_access($mitem,$mitem['map']);
+			if ($mitem['access']) { return true; }
+		}
+	}
+	return false;
+}
 function custom_tabs_admin() {
 	menu_rebuild();
   $form = array();
